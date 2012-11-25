@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+var fs = require('fs');
+var codon_js_map = require('./get_codon_char_map.js')();
+var program_path = process.argv[2];
+var program = fs.readFileSync(__dirname+'/'+program_path, 'utf8');
+var _errors = [];
+var _READING_FRAMES_NUM = 3;
+
+// 1. remove whitespace
+program = program.replace(/\s+/g, '');
+// 2. make upper case
+program = program.toUpperCase();
+verifyATGCOnly(program);
+verifyMultipleOfN(program, _READING_FRAMES_NUM);
+
+var ordered_programs = [];
+for (var f=0; f<_READING_FRAMES_NUM; f++){
+  ordered_programs.push(getProgramChunks(program, f));
+}
+
+ordered_programs.forEach(function(program, f){
+ console.log(applyExecutionContext(translateCodonProgram(program), f)); 
+});
+
+function applyExecutionContext(program, frame){
+  return '(function(frame){try{'+program+'}catch(e){console.log(\'error in reading frame\', frame, e)}})('+frame+')';
+}
+
+function translateCodonProgram(program){
+  var translation = '';
+  program.forEach(function(codon){
+    translation+=codon_js_map[codon];
+  });
+  return translation;
+}
+
+function rotateProgram(program, offset){
+  var p_array = program.split('');
+  return p_array.concat(p_array.splice(0, offset));
+}
+
+function getProgramChunks(str, start){
+  var codons = []
+  , p_array_rotated = rotateProgram(program, start);
+  var num_codons = p_array_rotated.length/_READING_FRAMES_NUM;
+  for (var i=0; i<num_codons; i++){
+    codons.push(p_array_rotated.splice(0, _READING_FRAMES_NUM).join(''));
+  }
+  return codons;
+}
+
+function verifyATGCOnly(str){
+  var ATGC = ['A','T','G','C'];
+  str.split('').forEach(function(c){
+    if (ATGC.indexOf(c)===-1){
+      _errors.push(c+' is not a valid symbol');
+    }
+  });
+  if (_errors.length){
+    return exitWithError();
+  } else {
+    return true;
+  }
+}
+
+function verifyMultipleOfN(str, n){
+  if (str.length%n!==0){
+    _errors.push(str.length+' is not a valid program length. Program length must be a multiple of', _READING_FRAMES_NUM);
+    exitWithError();
+  }
+}
+
+function exitWithError(){
+  console.error('**codon choke**');
+  console.error('Error:', _errors.pop());
+  console.error('**fin**');
+  process.exit();
+}
